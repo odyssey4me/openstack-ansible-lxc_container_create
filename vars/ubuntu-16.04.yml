@@ -1,4 +1,17 @@
 ---
+# Copyright 2016, Rackspace US, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # Note this is a used in an iterable and requires the <item.value.interface> variable
 #   The container interface variable is a a default object that assume the
@@ -15,9 +28,9 @@ lxc_container_interface: |
   {% endif %}
       mtu {{ item.value.mtu|default(lxc_container_default_mtu) }}
       # needed to enable gratuitous arps on interface events
-      post-up sysctl -w net.ipv4.conf.$IFACE.arp_notify=1
+      post-up sysctl -w net.ipv4.conf.\$IFACE.arp_notify=1
       # needed to force an interface event (setting mac to what it already is)
-      post-up ip link set $IFACE address $(cat /sys/class/net/$IFACE/address)
+      post-up ip link set \$IFACE address \$(cat /sys/class/net/\$IFACE/address)
   {% if item.value.static_routes is defined %}
   {% for route in item.value.static_routes %}
       post-up ip route add {{ route['cidr'] }} via {{ route['gateway'] }} || true
@@ -38,6 +51,8 @@ lxc_container_default_interfaces: |
   iface eth0 inet dhcp
   # Load any additional configs
   source /etc/network/interfaces.d/*.cfg
+
+lxc_container_default_interface_target: /etc/network/interfaces
 
 # Notice this is already resolved in the debian interface file
 lxc_container_default_route_interfaces:
@@ -60,6 +75,5 @@ lxc_container_map:
     ln -s /dev/null /etc/systemd/system/systemd-udevd-control.socket || true
     ln -s /dev/null /etc/systemd/system/systemd-udevd-kernel.socket || true
     ln -s /dev/null /etc/systemd/system/proc-sys-fs-binfmt_misc.automount || true
-    echo -e '{{ lxc_container_default_interfaces }}' | tee /etc/network/interfaces
     mkdir -p /etc/network/interfaces.d
     chage -I -1 -d -1 -m 0 -M 99999 -E -1 root

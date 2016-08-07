@@ -57,7 +57,7 @@
 - name: Create container
   lxc_container:
     name: "{{ inventory_hostname }}"
-    container_log: "true"
+    container_log: true
     container_log_level: "{{ (debug | bool) | ternary('DEBUG', 'INFO') }}"
     config: "{{ lxc_container_config }}"
     template: "{{ lxc_container_template }}"
@@ -103,15 +103,67 @@
   tags:
     - lxc-container-create
 
+# Due to https://github.com/ansible/ansible-modules-extras/issues/2691
+# this uses the LXC CLI tools to ensure that we get logging.
+# TODO(odyssey4me): revisit this once the bug is fixed and released
+- name: Check container state
+  command: "lxc-info -n {{ inventory_hostname }} --state"
+  failed_when: false
+  delegate_to: "{{ physical_host }}"
+  register: _lxc_container_state
+
+# Due to https://github.com/ansible/ansible-modules-extras/issues/2691
+# this uses the LXC CLI tools to ensure that we get logging.
+# TODO(odyssey4me): revisit this once the bug is fixed and released
+- name: Start the container if it is not already running
+  command: >
+    lxc-start --daemon --name {{ inventory_hostname }}
+    --logfile {{ lxc_container_log_path }}/lxc-{{ inventory_hostname }}.log
+    --logpriority {{ (debug | bool) | ternary('DEBUG', 'INFO') }}
+  delegate_to: "{{ physical_host }}"
+  when: _lxc_container_state.stdout.find('STOPPED') != -1
+
+# Due to https://github.com/ansible/ansible-modules-extras/issues/2691
+# this uses the LXC CLI tools to ensure that we get logging.
+# TODO(odyssey4me): revisit this once the bug is fixed and released
+- name: Execute container prep commands
+  command: >
+    lxc-attach --name {{ inventory_hostname }}
+    --logfile {{ lxc_container_log_path }}/lxc-{{ inventory_hostname }}.log
+    --logpriority {{ (debug | bool) | ternary('DEBUG', 'INFO') }}
+    --
+    bash -c '{{ lxc_container_map.prep_commands }}'
+  delegate_to: "{{ physical_host }}"
+  tags:
+    - lxc-container-prep-commands
+
+# Due to https://github.com/ansible/ansible-modules-extras/issues/2691
+# this uses the LXC CLI tools to ensure that we get logging.
+# TODO(odyssey4me): revisit this once the bug is fixed and released
 - name: Execute container commands
-  lxc_container:
-    name: "{{ inventory_hostname }}"
-    container_command: |
-      {{ lxc_container_map.prep_commands }}
-      {{ lxc_container_commands }}
+  command: >
+    lxc-attach --name {{ inventory_hostname }}
+    --logfile {{ lxc_container_log_path }}/lxc-{{ inventory_hostname }}.log
+    --logpriority {{ (debug | bool) | ternary('DEBUG', 'INFO') }}
+    --
+    bash -c '{{ lxc_container_commands }}'
   delegate_to: "{{ physical_host }}"
   tags:
     - lxc-container-commands
+
+# Due to https://github.com/ansible/ansible-modules-extras/issues/2691
+# this uses the LXC CLI tools to ensure that we get logging.
+# TODO(odyssey4me): revisit this once the bug is fixed and released
+- name: Execute container default network setup
+  command: >
+    lxc-attach --name {{ inventory_hostname }}
+    --logfile {{ lxc_container_log_path }}/lxc-{{ inventory_hostname }}.log
+    --logpriority {{ (debug | bool) | ternary('DEBUG', 'INFO') }}
+    --
+    bash -c 'echo -e "{{ lxc_container_default_interfaces }}" | tee {{ lxc_container_default_interface_target }}'
+  delegate_to: "{{ physical_host }}"
+  tags:
+    - lxc-container-default-network
 
 - name: Write default container config
   lineinfile:
@@ -132,11 +184,16 @@
   with_items: "{{ lxc_container_bind_mounts }}"
   delegate_to: "{{ physical_host }}"
 
-- name: Ensure container directories exist
-  lxc_container:
-    name: "{{ inventory_hostname }}"
-    container_command: |
-      [[ ! -d "{{ item['container_directory'] }}" ]] && mkdir -p "{{ item['container_directory'] }}"
+# Due to https://github.com/ansible/ansible-modules-extras/issues/2691
+# this uses the LXC CLI tools to ensure that we get logging.
+# TODO(odyssey4me): revisit this once the bug is fixed and released
+- name: Ensure bind mount directories exist in container
+  command: >
+    lxc-attach --name {{ inventory_hostname }}
+    --logfile {{ lxc_container_log_path }}/lxc-{{ inventory_hostname }}.log
+    --logpriority {{ (debug | bool) | ternary('DEBUG', 'INFO') }}
+    --
+    bash -c '[[ ! -d "{{ item.container_directory }}" ]] && mkdir -p "{{ item.container_directory }}"'
   with_items: "{{ lxc_container_bind_mounts }}"
   delegate_to: "{{ physical_host }}"
 
@@ -152,21 +209,31 @@
   tags:
     - lxc-container-config
 
+# Due to https://github.com/ansible/ansible-modules-extras/issues/2691
+# this uses the LXC CLI tools to ensure that we get logging.
+# TODO(odyssey4me): revisit this once the bug is fixed and released
 - name: Container network interfaces
-  lxc_container:
-    name: "{{ inventory_hostname }}"
-    container_command: |
-      echo -e '{{ lxc_container_interface }}' | tee {{ lxc_container_interface_target }}
+  command: >
+    lxc-attach --name {{ inventory_hostname }}
+    --logfile {{ lxc_container_log_path }}/lxc-{{ inventory_hostname }}.log
+    --logpriority {{ (debug | bool) | ternary('DEBUG', 'INFO') }}
+    --
+    bash -c 'echo -e "{{ lxc_container_interface }}" | tee {{ lxc_container_interface_target }}'
   with_dict: "{{ container_networks | default({}) }}"
   delegate_to: "{{ physical_host }}"
   tags:
     - lxc-container-networks
 
+# Due to https://github.com/ansible/ansible-modules-extras/issues/2691
+# this uses the LXC CLI tools to ensure that we get logging.
+# TODO(odyssey4me): revisit this once the bug is fixed and released
 - name: Container network route interfaces
-  lxc_container:
-    name: "{{ inventory_hostname }}"
-    container_command: |
-      echo -e '{{ lxc_container_default_route_interfaces.route_setup }}' | tee {{ lxc_container_default_route_interfaces.route_file }}
+  command: >
+    lxc-attach --name {{ inventory_hostname }}
+    --logfile {{ lxc_container_log_path }}/lxc-{{ inventory_hostname }}.log
+    --logpriority {{ (debug | bool) | ternary('DEBUG', 'INFO') }}
+    --
+    bash -c 'echo -e "{{ lxc_container_default_route_interfaces.route_setup }}" | tee {{ lxc_container_default_route_interfaces.route_file }}'
   when: item.value.static_routes is defined
   with_dict: "{{ container_networks | default({}) }}"
   delegate_to: "{{ physical_host }}"
